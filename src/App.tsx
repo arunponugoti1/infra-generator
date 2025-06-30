@@ -443,8 +443,8 @@ function App() {
         <div className="flex items-start space-x-2">
           <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
           <div className="text-sm">
-            <p className="font-medium text-blue-900">Data Persistence Active</p>
-            <p className="text-blue-700">Your configurations are automatically saved and will persist across browser sessions.</p>
+            {/*<p className="font-medium text-blue-900">Data Persistence Active</p>
+            <p className="text-blue-700">Your configurations are automatically saved and will persist across browser sessions.</p>*/}
           </div>
         </div>
       </div>
