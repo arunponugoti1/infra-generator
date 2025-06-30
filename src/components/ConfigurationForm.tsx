@@ -176,7 +176,7 @@ const ConfigurationForm: React.FC<ConfigurationFormProps> = ({ config, onChange,
       </div>
 
       {/* Data Persistence Notice */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+      {/*<div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="flex items-start space-x-2">
           <Save className="h-5 w-5 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-800">
@@ -189,7 +189,7 @@ const ConfigurationForm: React.FC<ConfigurationFormProps> = ({ config, onChange,
             </ul>
           </div>
         </div>
-      </div>
+      </div>*/}
 
       {/* Next Button */}
       <div className="mt-8 flex justify-end">
