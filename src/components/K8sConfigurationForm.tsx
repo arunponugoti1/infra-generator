@@ -566,22 +566,7 @@ const K8sConfigurationForm: React.FC<K8sConfigurationFormProps> = ({ config, onC
         </div>
       </div>
 
-      {/* Data Persistence Notice */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex items-start space-x-2">
-          <Save className="h-5 w-5 text-blue-600 mt-0.5" />
-          <div className="text-sm text-blue-800">
-            <p className="font-medium mb-1">💾 Data Persistence Active:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>All configurations are automatically saved to your browser</li>
-              <li>Data persists across page refreshes and browser sessions</li>
-              <li>Use Export/Import in the header to backup or share configurations</li>
-              <li>Reset All button clears all saved data</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
+      
       {/* Next Button */}
       <div className="mt-8 flex justify-end">
         <button
