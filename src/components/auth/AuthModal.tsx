@@ -50,7 +50,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
         const { error } = await signUp(email, password, fullName);
         if (error) {
-          setError(error.message);
+          // Handle rate limiting error specifically
+          if (error.message.includes('over_email_send_rate_limit') || error.message.includes('45 seconds')) {
+            setError('Too many signup attempts. Please wait at least 45 seconds before trying again.');
+          } else {
+            setError(error.message);
+          }
         } else {
           setSuccess('Account created successfully! Please check your email to verify your account before signing in.');
           setTimeout(() => {
@@ -61,7 +66,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
       } else {
         const { error } = await signIn(email, password);
         if (error) {
-          setError(error.message);
+          // Provide more helpful error messages
+          if (error.message.includes('email_not_confirmed')) {
+            setError('Please check your email and click the confirmation link before signing in. Check your spam folder if you don\'t see the email.');
+          } else if (error.message.includes('invalid_credentials')) {
+            setError('Invalid email or password. Please check your credentials and try again.');
+          } else {
+            setError(error.message);
+          }
         } else {
           handleClose();
         }
@@ -105,7 +117,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
               <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-blue-700">
                 <p className="font-medium">Email verification required</p>
-                <p>You'll need to verify your email address before you can sign in.</p>
+                <p>You'll need to verify your email address before you can sign in. Please use a real email address.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Rate Limiting Info */}
+          {error && error.includes('45 seconds') && (
+            <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-yellow-700">
+                <p className="font-medium">Rate limit reached</p>
+                <p>For security purposes, please wait before attempting another signup.</p>
               </div>
             </div>
           )}
@@ -203,9 +226,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (error && error.includes('45 seconds'))}
             className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-              loading
+              loading || (error && error.includes('45 seconds'))
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}

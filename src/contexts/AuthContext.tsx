@@ -112,29 +112,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error.message.includes('weak_password')) {
           return { error: { message: 'Password is too weak. Please choose a stronger password.' } };
         }
+        if (error.message.includes('over_email_send_rate_limit')) {
+          return { error: { message: 'Too many signup attempts. Please wait 45 seconds before trying again.' } };
+        }
         return { error };
       }
 
-      // Create profile record only if user was created successfully
+      // Create profile record only if user was created successfully and confirmed
+      // Note: We'll create the profile after email confirmation during sign-in
+      // This avoids RLS issues during the signup process
       if (data.user && !error) {
-        try {
-          const { error: profileError } = await supabase
-            .from('user_profiles')
-            .insert([
-              {
-                id: data.user.id,
-                email: data.user.email || email,
-                full_name: fullName,
-              }
-            ]);
+        // Only attempt to create profile if user is confirmed
+        // For unconfirmed users, profile will be created on first sign-in
+        if (data.user.email_confirmed_at) {
+          try {
+            const { error: profileError } = await supabase
+              .from('user_profiles')
+              .insert([
+                {
+                  id: data.user.id,
+                  email: data.user.email || email,
+                  full_name: fullName,
+                }
+              ]);
 
-          if (profileError) {
+            if (profileError) {
+              console.error('Error creating profile:', profileError);
+              // Don't return this as an error to the user since the account was created
+              // The profile can be created later when they sign in
+            }
+          } catch (profileError) {
             console.error('Error creating profile:', profileError);
-            // Don't return this as an error to the user since the account was created
-            // The profile can be created later when they sign in
           }
-        } catch (profileError) {
-          console.error('Error creating profile:', profileError);
         }
       }
 
@@ -146,7 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -160,6 +169,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { error: { message: 'Invalid email or password' } };
         }
         return { error };
+      }
+
+      // After successful sign-in, ensure profile exists
+      if (data.user) {
+        try {
+          // Check if profile exists
+          const { data: existingProfile, error: fetchError } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('id', data.user.id)
+            .single();
+
+          // If profile doesn't exist, create it
+          if (fetchError && fetchError.code === 'PGRST116') {
+            const fullName = data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User';
+            
+            const { error: createError } = await supabase
+              .from('user_profiles')
+              .insert([
+                {
+                  id: data.user.id,
+                  email: data.user.email || email,
+                  full_name: fullName,
+                }
+              ]);
+
+            if (createError) {
+              console.error('Error creating profile on sign-in:', createError);
+            }
+          }
+        } catch (profileError) {
+          console.error('Error handling profile on sign-in:', profileError);
+        }
       }
 
       return { error: null };
