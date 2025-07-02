@@ -45,11 +45,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          await fetchProfile(session.user.id);
+          // Wait a moment for the trigger to create the profile
+          if (event === 'SIGNED_IN') {
+            setTimeout(() => fetchProfile(session.user.id), 1000);
+          } else {
+            await fetchProfile(session.user.id);
+          }
         } else {
           setProfile(null);
           setLoading(false);
@@ -68,8 +74,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching profile:', error);
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Profile doesn't exist, this is normal for new users
+          console.log('Profile not found for user:', userId);
+        } else {
+          console.error('Error fetching profile:', error);
+        }
       } else if (data) {
         setProfile(data);
       }
@@ -82,16 +93,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      // Validate email format before sending to Supabase
+      // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         return { error: { message: 'Please enter a valid email address' } };
       }
 
-      // Check for common test/placeholder emails
-      const testEmails = ['test@example.com', 'user@example.com', 'admin@example.com'];
+      // Prevent common test emails that Supabase rejects
+      const testEmails = ['test@example.com', 'user@example.com', 'admin@example.com', 'demo@example.com'];
       if (testEmails.includes(email.toLowerCase())) {
-        return { error: { message: 'Please use a real email address instead of a placeholder email' } };
+        return { error: { message: 'Please use a real email address. Test emails like "test@example.com" are not allowed.' } };
       }
 
       const { data, error } = await supabase.auth.signUp({
@@ -105,50 +116,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        // Handle specific Supabase auth errors
+        console.error('Signup error:', error);
+        
+        // Handle specific error cases
         if (error.message.includes('email_address_invalid')) {
           return { error: { message: 'Please enter a valid email address' } };
         }
         if (error.message.includes('weak_password')) {
-          return { error: { message: 'Password is too weak. Please choose a stronger password.' } };
+          return { error: { message: 'Password is too weak. Please choose a stronger password (at least 6 characters).' } };
         }
         if (error.message.includes('over_email_send_rate_limit')) {
-          return { error: { message: 'Too many signup attempts. Please wait 45 seconds before trying again.' } };
+          return { error: { message: 'Too many signup attempts. Please wait 60 seconds before trying again.' } };
         }
+        if (error.message.includes('User already registered')) {
+          return { error: { message: 'An account with this email already exists. Please sign in instead.' } };
+        }
+        
         return { error };
       }
 
-      // Create profile record only if user was created successfully and confirmed
-      // Note: We'll create the profile after email confirmation during sign-in
-      // This avoids RLS issues during the signup process
-      if (data.user && !error) {
-        // Only attempt to create profile if user is confirmed
-        // For unconfirmed users, profile will be created on first sign-in
-        if (data.user.email_confirmed_at) {
-          try {
-            const { error: profileError } = await supabase
-              .from('user_profiles')
-              .insert([
-                {
-                  id: data.user.id,
-                  email: data.user.email || email,
-                  full_name: fullName,
-                }
-              ]);
-
-            if (profileError) {
-              console.error('Error creating profile:', profileError);
-              // Don't return this as an error to the user since the account was created
-              // The profile can be created later when they sign in
-            }
-          } catch (profileError) {
-            console.error('Error creating profile:', profileError);
-          }
-        }
-      }
-
+      // Don't try to create profile here - let the database trigger handle it
+      // after email confirmation
       return { error: null };
     } catch (error) {
+      console.error('Unexpected signup error:', error);
       return { error: { message: 'An unexpected error occurred during signup' } };
     }
   };
@@ -161,51 +152,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        // Handle specific Supabase auth errors
+        console.error('Sign in error:', error);
+        
+        // Handle specific error cases
         if (error.message.includes('email_not_confirmed')) {
-          return { error: { message: 'Please check your email and click the confirmation link before signing in' } };
+          return { error: { message: 'Please check your email and click the confirmation link before signing in. Check your spam folder if needed.' } };
         }
-        if (error.message.includes('invalid_credentials')) {
-          return { error: { message: 'Invalid email or password' } };
+        if (error.message.includes('invalid_credentials') || error.message.includes('Invalid login credentials')) {
+          return { error: { message: 'Invalid email or password. Please check your credentials and try again.' } };
         }
+        
         return { error };
       }
 
-      // After successful sign-in, ensure profile exists
+      // Profile should be created automatically by the database trigger
+      // If it doesn't exist after a moment, we'll create it manually
       if (data.user) {
-        try {
-          // Check if profile exists
-          const { data: existingProfile, error: fetchError } = await supabase
-            .from('user_profiles')
-            .select('id')
-            .eq('id', data.user.id)
-            .single();
-
-          // If profile doesn't exist, create it
-          if (fetchError && fetchError.code === 'PGRST116') {
-            const fullName = data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || 'User';
-            
-            const { error: createError } = await supabase
+        setTimeout(async () => {
+          try {
+            const { data: existingProfile } = await supabase
               .from('user_profiles')
-              .insert([
-                {
-                  id: data.user.id,
-                  email: data.user.email || email,
-                  full_name: fullName,
-                }
-              ]);
+              .select('id')
+              .eq('id', data.user.id)
+              .single();
 
-            if (createError) {
-              console.error('Error creating profile on sign-in:', createError);
+            if (!existingProfile) {
+              // Fallback: create profile manually if trigger didn't work
+              const fullName = data.user.user_metadata?.full_name || 
+                              data.user.email?.split('@')[0] || 'User';
+              
+              await supabase
+                .from('user_profiles')
+                .insert([
+                  {
+                    id: data.user.id,
+                    email: data.user.email || email,
+                    full_name: fullName,
+                  }
+                ]);
             }
+          } catch (profileError) {
+            console.error('Error handling profile creation:', profileError);
           }
-        } catch (profileError) {
-          console.error('Error handling profile on sign-in:', profileError);
-        }
+        }, 500);
       }
 
       return { error: null };
     } catch (error) {
+      console.error('Unexpected sign in error:', error);
       return { error: { message: 'An unexpected error occurred during sign in' } };
     }
   };
