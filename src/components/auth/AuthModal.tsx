@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Info, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface AuthModalProps {
@@ -34,6 +34,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
     onClose();
   };
 
+  const isRateLimited = error.includes('60 seconds') || error.includes('45 seconds') || error.includes('rate limit');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -50,30 +52,15 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
         const { error } = await signUp(email, password, fullName);
         if (error) {
-          // Handle rate limiting error specifically
-          if (error.message.includes('over_email_send_rate_limit') || error.message.includes('45 seconds')) {
-            setError('Too many signup attempts. Please wait at least 45 seconds before trying again.');
-          } else {
-            setError(error.message);
-          }
+          setError(error.message);
         } else {
-          setSuccess('Account created successfully! Please check your email to verify your account before signing in.');
-          setTimeout(() => {
-            setMode('signin');
-            setSuccess('');
-          }, 5000);
+          setSuccess('Account created successfully! Please check your email and click the confirmation link to verify your account before signing in.');
+          // Don't auto-switch to signin mode, let user read the message
         }
       } else {
         const { error } = await signIn(email, password);
         if (error) {
-          // Provide more helpful error messages
-          if (error.message.includes('email_not_confirmed')) {
-            setError('Please check your email and click the confirmation link before signing in. Check your spam folder if you don\'t see the email.');
-          } else if (error.message.includes('invalid_credentials')) {
-            setError('Invalid email or password. Please check your credentials and try again.');
-          } else {
-            setError(error.message);
-          }
+          setError(error.message);
         } else {
           handleClose();
         }
@@ -111,24 +98,24 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Email Verification Info for Sign Up */}
+          {/* Email Requirements Info for Sign Up */}
           {mode === 'signup' && (
             <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-blue-700">
                 <p className="font-medium">Email verification required</p>
-                <p>You'll need to verify your email address before you can sign in. Please use a real email address.</p>
+                <p>Please use a real email address. You'll receive a confirmation link that you must click before you can sign in.</p>
               </div>
             </div>
           )}
 
-          {/* Rate Limiting Info */}
-          {error && error.includes('45 seconds') && (
+          {/* Rate Limiting Warning */}
+          {isRateLimited && (
             <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <Clock className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-yellow-700">
-                <p className="font-medium">Rate limit reached</p>
-                <p>For security purposes, please wait before attempting another signup.</p>
+                <p className="font-medium">Rate limit active</p>
+                <p>Please wait before attempting another signup. This helps protect against spam.</p>
               </div>
             </div>
           )}
@@ -171,7 +158,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
             </div>
             {mode === 'signup' && (
               <p className="text-xs text-gray-500 mt-1">
-                Please use a real email address - you'll need to verify it
+                Use a real email address - avoid test emails like "test@example.com"
               </p>
             )}
           </div>
@@ -226,9 +213,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || (error && error.includes('45 seconds'))}
+            disabled={loading || isRateLimited}
             className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-              loading || (error && error.includes('45 seconds'))
+              loading || isRateLimited
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
@@ -238,24 +225,28 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 <span>{mode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
               </div>
+            ) : isRateLimited ? (
+              'Please wait before trying again'
             ) : (
               mode === 'signin' ? 'Sign In' : 'Create Account'
             )}
           </button>
 
           {/* Switch Mode */}
-          <div className="text-center pt-4 border-t border-gray-200">
-            <p className="text-sm text-gray-600">
-              {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
-              <button
-                type="button"
-                onClick={switchMode}
-                className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
-              >
-                {mode === 'signin' ? 'Sign Up' : 'Sign In'}
-              </button>
-            </p>
-          </div>
+          {!success && (
+            <div className="text-center pt-4 border-t border-gray-200">
+              <p className="text-sm text-gray-600">
+                {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
+                <button
+                  type="button"
+                  onClick={switchMode}
+                  className="ml-1 text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+                </button>
+              </p>
+            </div>
+          )}
         </form>
       </div>
     </div>
