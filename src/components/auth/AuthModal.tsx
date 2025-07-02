@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface AuthModalProps {
@@ -52,11 +52,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
         if (error) {
           setError(error.message);
         } else {
-          setSuccess('Account created successfully! Please check your email to verify your account.');
+          setSuccess('Account created successfully! Please check your email to verify your account before signing in.');
           setTimeout(() => {
             setMode('signin');
             setSuccess('');
-          }, 3000);
+          }, 5000);
         }
       } else {
         const { error } = await signIn(email, password);
@@ -99,6 +99,17 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Email Verification Info for Sign Up */}
+          {mode === 'signup' && (
+            <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-700">
+                <p className="font-medium">Email verification required</p>
+                <p>You'll need to verify your email address before you can sign in.</p>
+              </div>
+            </div>
+          )}
+
           {/* Full Name (Sign Up only) */}
           {mode === 'signup' && (
             <div>
@@ -135,6 +146,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
                 required
               />
             </div>
+            {mode === 'signup' && (
+              <p className="text-xs text-gray-500 mt-1">
+                Please use a real email address - you'll need to verify it
+              </p>
+            )}
           </div>
 
           {/* Password */}
@@ -170,16 +186,16 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
           {/* Error Message */}
           {error && (
-            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+            <div className="flex items-start space-x-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
 
           {/* Success Message */}
           {success && (
-            <div className="flex items-center space-x-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+            <div className="flex items-start space-x-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-green-700">{success}</p>
             </div>
           )}
