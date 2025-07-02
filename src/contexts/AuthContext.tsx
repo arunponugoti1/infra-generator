@@ -82,6 +82,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
+      // Validate email format before sending to Supabase
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return { error: { message: 'Please enter a valid email address' } };
+      }
+
+      // Check for common test/placeholder emails
+      const testEmails = ['test@example.com', 'user@example.com', 'admin@example.com'];
+      if (testEmails.includes(email.toLowerCase())) {
+        return { error: { message: 'Please use a real email address instead of a placeholder email' } };
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -92,28 +104,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
 
-      if (error) return { error };
+      if (error) {
+        // Handle specific Supabase auth errors
+        if (error.message.includes('email_address_invalid')) {
+          return { error: { message: 'Please enter a valid email address' } };
+        }
+        if (error.message.includes('weak_password')) {
+          return { error: { message: 'Password is too weak. Please choose a stronger password.' } };
+        }
+        return { error };
+      }
 
-      // Create profile record
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .insert([
-            {
-              id: data.user.id,
-              email: data.user.email,
-              full_name: fullName,
-            }
-          ]);
+      // Create profile record only if user was created successfully
+      if (data.user && !error) {
+        try {
+          const { error: profileError } = await supabase
+            .from('user_profiles')
+            .insert([
+              {
+                id: data.user.id,
+                email: data.user.email || email,
+                full_name: fullName,
+              }
+            ]);
 
-        if (profileError) {
+          if (profileError) {
+            console.error('Error creating profile:', profileError);
+            // Don't return this as an error to the user since the account was created
+            // The profile can be created later when they sign in
+          }
+        } catch (profileError) {
           console.error('Error creating profile:', profileError);
         }
       }
 
       return { error: null };
     } catch (error) {
-      return { error };
+      return { error: { message: 'An unexpected error occurred during signup' } };
     }
   };
 
@@ -123,9 +150,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email,
         password,
       });
-      return { error };
+
+      if (error) {
+        // Handle specific Supabase auth errors
+        if (error.message.includes('email_not_confirmed')) {
+          return { error: { message: 'Please check your email and click the confirmation link before signing in' } };
+        }
+        if (error.message.includes('invalid_credentials')) {
+          return { error: { message: 'Invalid email or password' } };
+        }
+        return { error };
+      }
+
+      return { error: null };
     } catch (error) {
-      return { error };
+      return { error: { message: 'An unexpected error occurred during sign in' } };
     }
   };
 
@@ -134,7 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!user) return { error: 'No user logged in' };
+    if (!user) return { error: { message: 'No user logged in' } };
 
     try {
       const { error } = await supabase
@@ -148,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { error };
     } catch (error) {
-      return { error };
+      return { error: { message: 'Failed to update profile' } };
     }
   };
 
