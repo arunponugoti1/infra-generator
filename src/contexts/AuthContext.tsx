@@ -10,6 +10,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>;
   refreshProfile: () => Promise<void>;
 }
@@ -216,6 +217,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return { error: { message: 'Please enter a valid email address' } };
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        console.error('Password reset error:', error);
+        
+        // Handle specific error cases
+        if (error.message.includes('email_address_invalid')) {
+          return { error: { message: 'Please enter a valid email address' } };
+        }
+        if (error.message.includes('over_email_send_rate_limit')) {
+          return { error: { message: 'Too many password reset attempts. Please wait before trying again.' } };
+        }
+        
+        return { error };
+      }
+
+      return { error: null };
+    } catch (error) {
+      console.error('Unexpected password reset error:', error);
+      return { error: { message: 'An unexpected error occurred while sending the password reset email' } };
+    }
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -253,6 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp,
     signIn,
     signOut,
+    resetPassword,
     updateProfile,
     refreshProfile,
   };
