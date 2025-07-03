@@ -1,10 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers, User, LogOut, History } from 'lucide-react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import AuthModal from './components/auth/AuthModal';
-import ProtectedRoute from './components/auth/ProtectedRoute';
-import ProfileModal from './components/profile/ProfileModal';
-import DeploymentHistory from './components/history/DeploymentHistory';
+import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers } from 'lucide-react';
 import ConfigurationForm from './components/ConfigurationForm';
 import TerraformPreview from './components/TerraformPreview';
 import GitHubIntegration from './components/GitHubIntegration';
@@ -14,7 +9,6 @@ import K8sConfigurationForm from './components/K8sConfigurationForm';
 import K8sManifestPreview from './components/K8sManifestPreview';
 import K8sGitHubIntegration from './components/K8sGitHubIntegration';
 import K8sWorkflowStatus from './components/K8sWorkflowStatus';
-import { useDeploymentTracking } from './hooks/useDeploymentTracking';
 import { 
   loadAppState, 
   saveTerraformConfig, 
@@ -65,12 +59,9 @@ interface ManifestConfig {
 type DeploymentMode = 'infrastructure' | 'application';
 type InfraTab = 'config' | 'terraform' | 'github' | 'deploy';
 type AppTab = 'k8s-config' | 'k8s-manifest' | 'k8s-github' | 'k8s-deploy';
-type MainTab = 'infrastructure' | 'application' | 'history' | 'profile';
+type MainTab = 'infrastructure' | 'application';
 
-const AppContent: React.FC = () => {
-  const { user, profile, signOut } = useAuth();
-  const { saveDeployment, updateDeploymentStatus } = useDeploymentTracking();
-  
+const App: React.FC = () => {
   // Load initial state from localStorage
   const initialState = loadAppState();
   
@@ -85,7 +76,6 @@ const AppContent: React.FC = () => {
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
   const [lastSaved, setLastSaved] = useState<string | null>(getLastSavedTime());
   const [showImportExport, setShowImportExport] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Auto-save when configurations change
   useEffect(() => {
@@ -115,25 +105,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     saveActiveTab(activeInfraTab, activeAppTab);
   }, [activeInfraTab, activeAppTab]);
-
-  // Track deployments
-  const handleDeploymentStart = async (type: 'infrastructure' | 'application', config: any) => {
-    const projectName = type === 'infrastructure' 
-      ? config.clusterName 
-      : `${config.namespace}-app`;
-    
-    const githubRepo = type === 'infrastructure' 
-      ? `${githubConfig.owner}/${githubConfig.repo}`
-      : `${k8sGithubConfig.owner}/${k8sGithubConfig.repo}`;
-
-    await saveDeployment({
-      deployment_type: type,
-      project_name: projectName,
-      configuration: config,
-      status: 'pending',
-      github_repo: githubRepo,
-    });
-  };
 
   const handleTerraformConfigChange = (config: TerraformConfig) => {
     setTerraformConfig(config);
@@ -214,12 +185,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleSignOut = async () => {
-    if (confirm('Are you sure you want to sign out?')) {
-      await signOut();
-    }
-  };
-
   const formatLastSaved = (timestamp: string | null) => {
     if (!timestamp) return 'Never';
     const date = new Date(timestamp);
@@ -235,9 +200,7 @@ const AppContent: React.FC = () => {
 
   const mainTabs = [
     { id: 'infrastructure', label: 'Infrastructure', icon: Cloud },
-    { id: 'application', label: 'Applications', icon: Layers },
-    { id: 'history', label: 'History', icon: History },
-    { id: 'profile', label: 'Account', icon: User }
+    { id: 'application', label: 'Applications', icon: Layers }
   ];
 
   const infraTabs = [
@@ -270,13 +233,8 @@ const AppContent: React.FC = () => {
               </div>
             </div>
             
-            {/* User Info and Controls */}
+            {/* Controls */}
             <div className="flex items-center space-x-4">
-              {/* Welcome Message */}
-              <div className="hidden md:block text-sm text-gray-600">
-                Welcome back, <span className="font-medium">{profile?.full_name || user?.email}</span>
-              </div>
-
               {/* Auto-save Status */}
               <div className="flex items-center space-x-2 text-sm text-gray-500">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -291,28 +249,6 @@ const AppContent: React.FC = () => {
                   title="Import/Export Configuration"
                 >
                   <Settings className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* User Menu */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setShowProfileModal(true)}
-                  className="flex items-center space-x-2 p-2 text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                >
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-bold text-white">
-                      {profile?.full_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
-                    </span>
-                  </div>
-                </button>
-                
-                <button
-                  onClick={handleSignOut}
-                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                  title="Sign Out"
-                >
-                  <LogOut className="h-4 w-4" />
                 </button>
               </div>
 
@@ -402,51 +338,49 @@ const AppContent: React.FC = () => {
       </div>
 
       {/* Sub Navigation for Infrastructure/Application */}
-      {(mainTab === 'infrastructure' || mainTab === 'application') && (
-        <>
-          {/* Deployment Mode Selector */}
-          {mainTab === 'infrastructure' && (
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-              <DeploymentModeSelector
-                mode={deploymentMode}
-                onChange={handleDeploymentModeChange}
-              />
-            </div>
-          )}
-
-          {/* Sub Navigation Tabs */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
-                {(mainTab === 'infrastructure' ? infraTabs : appTabs).map((tab) => {
-                  const Icon = tab.icon;
-                  const activeTab = mainTab === 'infrastructure' ? activeInfraTab : activeAppTab;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        if (mainTab === 'infrastructure') {
-                          handleInfraTabChange(tab.id as InfraTab);
-                        } else {
-                          handleAppTabChange(tab.id as AppTab);
-                        }
-                      }}
-                      className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                        activeTab === tab.id
-                          ? 'border-blue-500 text-blue-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
+      <>
+        {/* Deployment Mode Selector */}
+        {mainTab === 'infrastructure' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+            <DeploymentModeSelector
+              mode={deploymentMode}
+              onChange={handleDeploymentModeChange}
+            />
           </div>
-        </>
-      )}
+        )}
+
+        {/* Sub Navigation Tabs */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+              {(mainTab === 'infrastructure' ? infraTabs : appTabs).map((tab) => {
+                const Icon = tab.icon;
+                const activeTab = mainTab === 'infrastructure' ? activeInfraTab : activeAppTab;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      if (mainTab === 'infrastructure') {
+                        handleInfraTabChange(tab.id as InfraTab);
+                      } else {
+                        handleAppTabChange(tab.id as AppTab);
+                      }
+                    }}
+                    className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      activeTab === tab.id
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+      </>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -532,95 +466,9 @@ const AppContent: React.FC = () => {
               )}
             </>
           )}
-
-          {/* History Tab */}
-          {mainTab === 'history' && (
-            <div className="p-6">
-              <DeploymentHistory />
-            </div>
-          )}
-
-          {/* Profile Tab */}
-          {mainTab === 'profile' && (
-            <div className="p-6">
-              <div className="max-w-2xl">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Account Settings</h2>
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <div className="flex items-center space-x-4 mb-6">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <span className="text-2xl font-bold text-white">
-                        {profile?.full_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
-                      </span>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{profile?.full_name || 'User'}</h3>
-                      <p className="text-gray-600">{user?.email}</p>
-                      <p className="text-sm text-gray-500">
-                        Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => setShowProfileModal(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Edit Profile
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </main>
-
-      {/* Profile Modal */}
-      <ProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-      />
     </div>
-  );
-};
-
-const App: React.FC = () => {
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
-  return (
-    <AuthProvider>
-      <div className="App">
-        <ProtectedRoute
-          fallback={
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-              <div className="text-center max-w-md mx-auto p-8">
-                <div className="bg-blue-600 p-4 rounded-full w-20 h-20 mx-auto mb-6 flex items-center justify-center">
-                  <Cloud className="h-10 w-10 text-white" />
-                </div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-4">IaC Generator</h1>
-                <p className="text-gray-600 mb-8">
-                  Enterprise-grade Infrastructure as Code platform for GKE deployments. 
-                  Sign in to manage your infrastructure and application deployments.
-                </p>
-                <button
-                  onClick={() => setShowAuthModal(true)}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Get Started
-                </button>
-              </div>
-              
-              <AuthModal
-                isOpen={showAuthModal}
-                onClose={() => setShowAuthModal(false)}
-                initialMode="signin"
-              />
-            </div>
-          }
-        >
-          <AppContent />
-        </ProtectedRoute>
-      </div>
-    </AuthProvider>
   );
 };
 
