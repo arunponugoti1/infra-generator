@@ -50,11 +50,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Wait a moment for the trigger to create the profile
-          if (event === 'SIGNED_IN') {
-            setTimeout(() => fetchProfile(session.user.id), 1000);
-          } else {
+          // Handle different auth events
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
             await fetchProfile(session.user.id);
+          } else if (event === 'SIGNED_UP') {
+            // For new signups, wait a moment for triggers to complete
+            setTimeout(() => fetchProfile(session.user.id), 2000);
           }
         } else {
           setProfile(null);
@@ -76,8 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // Profile doesn't exist, this is normal for new users
-          console.log('Profile not found for user:', userId);
+          // Profile doesn't exist, try to create it
+          console.log('Profile not found, attempting to create...');
+          await createProfileFallback(userId);
         } else {
           console.error('Error fetching profile:', error);
         }
@@ -88,6 +90,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error fetching profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createProfileFallback = async (userId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const fullName = user.user_metadata?.full_name || 
+                      user.email?.split('@')[0] || 'User';
+
+      // Try using the RPC function first
+      const { error: rpcError } = await supabase.rpc('create_user_profile', {
+        user_id: userId,
+        user_email: user.email || '',
+        user_full_name: fullName
+      });
+
+      if (rpcError) {
+        console.error('RPC profile creation failed:', rpcError);
+        
+        // Fallback to direct insert
+        const { error: insertError } = await supabase
+          .from('user_profiles')
+          .insert([
+            {
+              id: userId,
+              email: user.email || '',
+              full_name: fullName,
+            }
+          ]);
+
+        if (insertError) {
+          console.error('Direct profile creation failed:', insertError);
+        } else {
+          console.log('Profile created successfully via direct insert');
+          await fetchProfile(userId);
+        }
+      } else {
+        console.log('Profile created successfully via RPC');
+        await fetchProfile(userId);
+      }
+    } catch (error) {
+      console.error('Profile creation fallback failed:', error);
     }
   };
 
@@ -135,8 +181,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error };
       }
 
-      // Don't try to create profile here - let the database trigger handle it
-      // after email confirmation
       return { error: null };
     } catch (error) {
       console.error('Unexpected signup error:', error);
@@ -163,38 +207,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         return { error };
-      }
-
-      // Profile should be created automatically by the database trigger
-      // If it doesn't exist after a moment, we'll create it manually
-      if (data.user) {
-        setTimeout(async () => {
-          try {
-            const { data: existingProfile } = await supabase
-              .from('user_profiles')
-              .select('id')
-              .eq('id', data.user.id)
-              .single();
-
-            if (!existingProfile) {
-              // Fallback: create profile manually if trigger didn't work
-              const fullName = data.user.user_metadata?.full_name || 
-                              data.user.email?.split('@')[0] || 'User';
-              
-              await supabase
-                .from('user_profiles')
-                .insert([
-                  {
-                    id: data.user.id,
-                    email: data.user.email || email,
-                    full_name: fullName,
-                  }
-                ]);
-            }
-          } catch (profileError) {
-            console.error('Error handling profile creation:', profileError);
-          }
-        }, 500);
       }
 
       return { error: null };
