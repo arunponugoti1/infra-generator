@@ -242,7 +242,8 @@ export class GitHubService {
       // Check if we have push access to the repository
       return data.permissions?.push === true || data.permissions?.admin === true;
     } catch (error) {
-      console.error('Repository check error:', error);
+      // Return false for any error (including 404 Not Found)
+      // Don't log the error as it's expected behavior when repository doesn't exist
       return false;
     }
   }
