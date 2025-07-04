@@ -26,6 +26,7 @@ interface WorkflowStatusProps {
   status: 'idle' | 'deploying' | 'success' | 'error';
   onStatusChange: (status: 'idle' | 'deploying' | 'success' | 'error') => void;
   onBack: () => void;
+  onDeploymentStart?: (workflowUrl: string) => void;
 }
 
 interface WorkflowRun {
@@ -44,7 +45,8 @@ const WorkflowStatus: React.FC<WorkflowStatusProps> = ({
   terraformConfig,
   status,
   onStatusChange,
-  onBack
+  onBack,
+  onDeploymentStart
 }) => {
   const [workflowUrl, setWorkflowUrl] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
@@ -175,6 +177,11 @@ const WorkflowStatus: React.FC<WorkflowStatusProps> = ({
       
       const workflowUrl = `https://github.com/${githubConfig.owner}/${githubConfig.repo}/actions`;
       setWorkflowUrl(workflowUrl);
+
+      // Notify parent component about deployment start
+      if (onDeploymentStart) {
+        onDeploymentStart(workflowUrl);
+      }
 
       // Wait a moment for the workflow to appear in the API
       setTimeout(async () => {

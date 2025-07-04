@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers } from 'lucide-react';
+import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers, History, Save } from 'lucide-react';
 import ConfigurationForm from './components/ConfigurationForm';
 import TerraformPreview from './components/TerraformPreview';
 import GitHubIntegration from './components/GitHubIntegration';
@@ -9,6 +9,8 @@ import K8sConfigurationForm from './components/K8sConfigurationForm';
 import K8sManifestPreview from './components/K8sManifestPreview';
 import K8sGitHubIntegration from './components/K8sGitHubIntegration';
 import K8sWorkflowStatus from './components/K8sWorkflowStatus';
+import LocalDeploymentHistory from './components/history/LocalDeploymentHistory';
+import SavedConfigurations from './components/configurations/SavedConfigurations';
 import { 
   loadAppState, 
   saveTerraformConfig, 
@@ -22,6 +24,7 @@ import {
   importConfiguration,
   getLastSavedTime
 } from './utils/storage';
+import { saveDeployment, updateDeploymentStatus } from './utils/localDeploymentTracking';
 
 interface TerraformConfig {
   projectId: string;
@@ -59,7 +62,7 @@ interface ManifestConfig {
 type DeploymentMode = 'infrastructure' | 'application';
 type InfraTab = 'config' | 'terraform' | 'github' | 'deploy';
 type AppTab = 'k8s-config' | 'k8s-manifest' | 'k8s-github' | 'k8s-deploy';
-type MainTab = 'infrastructure' | 'application';
+type MainTab = 'infrastructure' | 'application' | 'history' | 'configurations';
 
 const App: React.FC = () => {
   // Load initial state from localStorage
@@ -76,6 +79,7 @@ const App: React.FC = () => {
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
   const [lastSaved, setLastSaved] = useState<string | null>(getLastSavedTime());
   const [showImportExport, setShowImportExport] = useState(false);
+  const [currentDeploymentId, setCurrentDeploymentId] = useState<string | null>(null);
 
   // Auto-save when configurations change
   useEffect(() => {
@@ -134,6 +138,51 @@ const App: React.FC = () => {
     setDeploymentMode(mode);
     setDeploymentStatus('idle');
     setMainTab(mode);
+  };
+
+  const handleDeploymentStart = (type: 'infrastructure' | 'application', config: any, githubRepo?: string, workflowUrl?: string) => {
+    try {
+      const deployment = saveDeployment({
+        deployment_type: type,
+        project_name: type === 'infrastructure' ? config.clusterName : config.namespace,
+        configuration: config,
+        status: 'pending',
+        github_repo: githubRepo,
+        workflow_url: workflowUrl,
+        notes: `${type} deployment started via IaC Generator`,
+      });
+      
+      setCurrentDeploymentId(deployment.id);
+      console.log('📊 Deployment tracked:', deployment.id);
+    } catch (error) {
+      console.error('Failed to track deployment:', error);
+    }
+  };
+
+  const handleDeploymentStatusChange = (status: 'idle' | 'deploying' | 'success' | 'error') => {
+    setDeploymentStatus(status);
+    
+    // Update deployment record if we have one
+    if (currentDeploymentId && status !== 'idle' && status !== 'deploying') {
+      const deploymentStatus = status === 'success' ? 'success' : 'failed';
+      updateDeploymentStatus(currentDeploymentId, deploymentStatus);
+      
+      if (status !== 'deploying') {
+        setCurrentDeploymentId(null);
+      }
+    }
+  };
+
+  const handleLoadConfiguration = (config: any, type: 'infrastructure' | 'application') => {
+    if (type === 'infrastructure') {
+      setTerraformConfig(config);
+      setMainTab('infrastructure');
+      setActiveInfraTab('config');
+    } else {
+      setK8sConfig(config);
+      setMainTab('application');
+      setActiveAppTab('k8s-config');
+    }
   };
 
   const handleExportConfig = () => {
@@ -200,7 +249,9 @@ const App: React.FC = () => {
 
   const mainTabs = [
     { id: 'infrastructure', label: 'Infrastructure', icon: Cloud },
-    { id: 'application', label: 'Applications', icon: Layers }
+    { id: 'application', label: 'Applications', icon: Layers },
+    { id: 'history', label: 'History', icon: History },
+    { id: 'configurations', label: 'Saved Configs', icon: Save }
   ];
 
   const infraTabs = [
@@ -350,36 +401,38 @@ const App: React.FC = () => {
         )}
 
         {/* Sub Navigation Tabs */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              {(mainTab === 'infrastructure' ? infraTabs : appTabs).map((tab) => {
-                const Icon = tab.icon;
-                const activeTab = mainTab === 'infrastructure' ? activeInfraTab : activeAppTab;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      if (mainTab === 'infrastructure') {
-                        handleInfraTabChange(tab.id as InfraTab);
-                      } else {
-                        handleAppTabChange(tab.id as AppTab);
-                      }
-                    }}
-                    className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
+        {(mainTab === 'infrastructure' || mainTab === 'application') && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                {(mainTab === 'infrastructure' ? infraTabs : appTabs).map((tab) => {
+                  const Icon = tab.icon;
+                  const activeTab = mainTab === 'infrastructure' ? activeInfraTab : activeAppTab;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        if (mainTab === 'infrastructure') {
+                          handleInfraTabChange(tab.id as InfraTab);
+                        } else {
+                          handleAppTabChange(tab.id as AppTab);
+                        }
+                      }}
+                      className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                        activeTab === tab.id
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
           </div>
-        </div>
+        )}
       </>
 
       {/* Main Content */}
@@ -419,8 +472,9 @@ const App: React.FC = () => {
                   githubConfig={githubConfig}
                   terraformConfig={terraformConfig}
                   status={deploymentStatus}
-                  onStatusChange={setDeploymentStatus}
+                  onStatusChange={handleDeploymentStatusChange}
                   onBack={() => handleInfraTabChange('github')}
+                  onDeploymentStart={(workflowUrl) => handleDeploymentStart('infrastructure', terraformConfig, `${githubConfig.owner}/${githubConfig.repo}`, workflowUrl)}
                 />
               )}
             </>
@@ -460,11 +514,26 @@ const App: React.FC = () => {
                   githubConfig={k8sGithubConfig}
                   k8sConfig={k8sConfig}
                   status={deploymentStatus}
-                  onStatusChange={setDeploymentStatus}
+                  onStatusChange={handleDeploymentStatusChange}
                   onBack={() => handleAppTabChange('k8s-github')}
+                  onDeploymentStart={(workflowUrl) => handleDeploymentStart('application', k8sConfig, `${k8sGithubConfig.owner}/${k8sGithubConfig.repo}`, workflowUrl)}
                 />
               )}
             </>
+          )}
+
+          {/* History Tab */}
+          {mainTab === 'history' && (
+            <LocalDeploymentHistory />
+          )}
+
+          {/* Configurations Tab */}
+          {mainTab === 'configurations' && (
+            <SavedConfigurations
+              onLoadConfiguration={handleLoadConfiguration}
+              currentInfraConfig={terraformConfig}
+              currentAppConfig={k8sConfig}
+            />
           )}
         </div>
       </main>

@@ -8,16 +8,13 @@ interface K8sConfig {
   region: string;
   zone: string;
   namespace: string;
-  appName: string;
-  frontendImage: string;
-  backendImage: string;
-  frontendPort: number;
-  backendPort: number;
-  replicas: number;
-  enablePersistentVolume: boolean;
-  storageSize: string;
-  enableIngress: boolean;
-  domain: string;
+  manifests: ManifestConfig[];
+}
+
+interface ManifestConfig {
+  type: 'frontend' | 'backend' | 'secrets' | 'ingress' | 'db-init-job';
+  enabled: boolean;
+  config: Record<string, any>;
 }
 
 interface GitHubConfig {
@@ -32,6 +29,7 @@ interface K8sWorkflowStatusProps {
   status: 'idle' | 'deploying' | 'success' | 'error';
   onStatusChange: (status: 'idle' | 'deploying' | 'success' | 'error') => void;
   onBack: () => void;
+  onDeploymentStart?: (workflowUrl: string) => void;
 }
 
 interface WorkflowRun {
@@ -50,7 +48,8 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
   k8sConfig,
   status,
   onStatusChange,
-  onBack
+  onBack,
+  onDeploymentStart
 }) => {
   const [workflowUrl, setWorkflowUrl] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
@@ -169,16 +168,6 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
         region: k8sConfig.region,
         zone: k8sConfig.zone,
         namespace: k8sConfig.namespace,
-        app_name: k8sConfig.appName,
-        frontend_image: k8sConfig.frontendImage,
-        backend_image: k8sConfig.backendImage,
-        frontend_port: k8sConfig.frontendPort.toString(),
-        backend_port: k8sConfig.backendPort.toString(),
-        replicas: k8sConfig.replicas.toString(),
-        enable_pv: k8sConfig.enablePersistentVolume.toString(),
-        storage_size: k8sConfig.storageSize,
-        enable_ingress: k8sConfig.enableIngress.toString(),
-        domain: k8sConfig.domain || ''
       };
 
       // Trigger the workflow
@@ -193,6 +182,11 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
       
       const workflowUrl = `https://github.com/${githubConfig.owner}/${githubConfig.repo}/actions`;
       setWorkflowUrl(workflowUrl);
+
+      // Notify parent component about deployment start
+      if (onDeploymentStart) {
+        onDeploymentStart(workflowUrl);
+      }
 
       // Wait a moment for the workflow to appear in the API
       setTimeout(async () => {
@@ -282,6 +276,9 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
     }
   };
 
+  const enabledManifests = k8sConfig.manifests.filter(m => m.enabled);
+  const manifestTypes = enabledManifests.map(m => m.type).join(', ');
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -318,27 +315,21 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
                   <p className="font-medium">{k8sConfig.namespace}</p>
                 </div>
                 <div>
-                  <span className="text-gray-600">App Name:</span>
-                  <p className="font-medium">{k8sConfig.appName}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Replicas:</span>
-                  <p className="font-medium">{k8sConfig.replicas} per service</p>
-                </div>
-                <div>
                   <span className="text-gray-600">Zone:</span>
                   <p className="font-medium">{k8sConfig.zone}</p>
                 </div>
               </div>
             </div>
 
-            {/* Application Images */}
+            {/* Selected Manifests */}
             <div className="bg-purple-50 p-4 rounded-lg mb-4">
-              <h4 className="font-medium text-purple-800 mb-2">Container Images</h4>
+              <h4 className="font-medium text-purple-800 mb-2">Selected Manifests</h4>
               <div className="text-sm text-purple-700 space-y-1">
-                <p><strong>Frontend:</strong> {k8sConfig.frontendImage}</p>
-                <p><strong>Backend:</strong> {k8sConfig.backendImage}</p>
-                <p><strong>Ports:</strong> Frontend:{k8sConfig.frontendPort}, Backend:{k8sConfig.backendPort}</p>
+                <p><strong>Count:</strong> {enabledManifests.length} manifest(s)</p>
+                <p><strong>Types:</strong> {manifestTypes || 'None selected'}</p>
+                {enabledManifests.map(manifest => (
+                  <p key={manifest.type}>• {manifest.type.replace('-', ' ')}</p>
+                ))}
               </div>
             </div>
 
@@ -346,12 +337,11 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
             <div className="bg-green-50 p-4 rounded-lg mb-4">
               <h4 className="font-medium text-green-800 mb-2">Enabled Features</h4>
               <div className="text-sm text-green-700 space-y-1">
-                <p>✅ Frontend LoadBalancer service</p>
-                <p>✅ Backend ClusterIP service</p>
+                <p>✅ Modular manifest deployment</p>
                 <p>✅ Health checks & rolling updates</p>
                 <p>✅ Resource limits & requests</p>
-                {k8sConfig.enablePersistentVolume && <p>✅ Persistent storage ({k8sConfig.storageSize})</p>}
-                {k8sConfig.enableIngress && <p>✅ Ingress controller & SSL</p>}
+                <p>✅ Production-ready configuration</p>
+                <p>✅ Zero-downtime deployments</p>
               </div>
             </div>
 
@@ -499,7 +489,7 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
               <h4 className="font-medium text-green-800 mb-3">🎉 Applications Deployed Successfully!</h4>
               <div className="space-y-2 text-sm text-green-700">
                 <p>✅ Your applications are now running on GKE!</p>
-                <p>🌐 Frontend and backend services are available</p>
+                <p>🌐 Selected manifests have been deployed</p>
                 <p>🔧 Check service endpoints:</p>
                 <code className="block bg-green-100 p-2 rounded text-xs mt-2 font-mono">
                   kubectl get services -n {k8sConfig.namespace}
@@ -516,7 +506,7 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
               <h4 className="font-medium text-orange-800 mb-3">🗑️ Applications Deleted!</h4>
               <div className="space-y-2 text-sm text-orange-700">
-                <p>✅ All application resources have been removed</p>
+                <p>✅ All selected application resources have been removed</p>
                 <p>🧹 Namespace and services cleaned up</p>
                 <p>💰 Resources are no longer consuming cluster capacity</p>
                 <p>🔄 You can now deploy new applications or configurations</p>
@@ -529,7 +519,7 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
               <h4 className="font-medium text-blue-800 mb-3">🔄 Applications Updated!</h4>
               <div className="space-y-2 text-sm text-blue-700">
                 <p>✅ Rolling update completed successfully</p>
-                <p>🚀 New container images are now deployed</p>
+                <p>🚀 New configurations are now deployed</p>
                 <p>⚡ Zero-downtime deployment achieved</p>
                 <p>📊 All pods are running the latest version</p>
               </div>
@@ -594,9 +584,9 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
             <h4 className="font-medium text-gray-800 mb-2">Kubernetes Operations Guide</h4>
             <div className="text-sm text-gray-600 space-y-1">
               <p><strong>Status:</strong> Check current deployment health and pod status</p>
-              <p><strong>Deploy:</strong> Apply all manifests and create new deployments</p>
-              <p><strong>Update:</strong> Perform rolling updates with new container images</p>
-              <p><strong>Delete:</strong> Remove all application resources from cluster</p>
+              <p><strong>Deploy:</strong> Apply selected manifests and create new deployments</p>
+              <p><strong>Update:</strong> Perform rolling updates with new configurations</p>
+              <p><strong>Delete:</strong> Remove selected application resources from cluster</p>
               <p className="text-xs mt-2 text-gray-500">🔄 All operations support zero-downtime deployments</p>
               <p className="text-xs text-gray-500">📊 Health checks ensure application availability</p>
             </div>
@@ -613,13 +603,12 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
               <h3 className="text-lg font-semibold text-gray-900">Confirm Application Deletion</h3>
             </div>
             <p className="text-gray-600 mb-4">
-              Are you sure you want to delete all application resources? This action will:
+              Are you sure you want to delete the selected application resources? This action will:
             </p>
             <ul className="text-sm text-gray-600 mb-6 space-y-1">
-              <li>• Delete all deployments in namespace: <strong>{k8sConfig.namespace}</strong></li>
-              <li>• Remove frontend and backend services</li>
-              <li>• Clean up load balancers and ingress controllers</li>
-              {k8sConfig.enablePersistentVolume && <li>• Delete persistent volume claims</li>}
+              <li>• Delete selected manifests in namespace: <strong>{k8sConfig.namespace}</strong></li>
+              <li>• Remove deployments and services for: <strong>{manifestTypes}</strong></li>
+              <li>• Clean up associated resources</li>
               <li>• <strong className="text-red-600">This action cannot be undone</strong></li>
             </ul>
             <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-md mb-4">
