@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers, History, Save } from 'lucide-react';
+import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers, History, Save, LogOut, User } from 'lucide-react';
+import { BasicAuthProvider, useBasicAuth } from './contexts/BasicAuthContext';
+import BasicAuth from './components/auth/BasicAuth';
 import ConfigurationForm from './components/ConfigurationForm';
 import TerraformPreview from './components/TerraformPreview';
 import GitHubIntegration from './components/GitHubIntegration';
@@ -9,8 +11,8 @@ import K8sConfigurationForm from './components/K8sConfigurationForm';
 import K8sManifestPreview from './components/K8sManifestPreview';
 import K8sGitHubIntegration from './components/K8sGitHubIntegration';
 import K8sWorkflowStatus from './components/K8sWorkflowStatus';
-import LocalDeploymentHistory from './components/history/LocalDeploymentHistory';
-import SavedConfigurations from './components/configurations/SavedConfigurations';
+import BasicDeploymentHistory from './components/history/BasicDeploymentHistory';
+import BasicSavedConfigurations from './components/configurations/BasicSavedConfigurations';
 import { 
   loadAppState, 
   saveTerraformConfig, 
@@ -24,7 +26,7 @@ import {
   importConfiguration,
   getLastSavedTime
 } from './utils/storage';
-import { saveDeployment, updateDeploymentStatus } from './utils/localDeploymentTracking';
+import { saveBasicDeployment, updateBasicDeploymentStatus } from './utils/basicDeploymentTracking';
 
 interface TerraformConfig {
   projectId: string;
@@ -64,7 +66,9 @@ type InfraTab = 'config' | 'terraform' | 'github' | 'deploy';
 type AppTab = 'k8s-config' | 'k8s-manifest' | 'k8s-github' | 'k8s-deploy';
 type MainTab = 'infrastructure' | 'application' | 'history' | 'configurations';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const { user, signOut } = useBasicAuth();
+  
   // Load initial state from localStorage
   const initialState = loadAppState();
   
@@ -142,18 +146,18 @@ const App: React.FC = () => {
 
   const handleDeploymentStart = (type: 'infrastructure' | 'application', config: any, githubRepo?: string, workflowUrl?: string) => {
     try {
-      const deployment = saveDeployment({
+      const deployment = saveBasicDeployment({
         deployment_type: type,
         project_name: type === 'infrastructure' ? config.clusterName : config.namespace,
         configuration: config,
         status: 'pending',
         github_repo: githubRepo,
         workflow_url: workflowUrl,
-        notes: `${type} deployment started via IaC Generator`,
+        notes: `${type} deployment started via IaC Generator by ${user?.name}`,
       });
       
       setCurrentDeploymentId(deployment.id);
-      console.log('📊 Deployment tracked:', deployment.id);
+      console.log('📊 Deployment tracked for user:', user?.name, deployment.id);
     } catch (error) {
       console.error('Failed to track deployment:', error);
     }
@@ -165,7 +169,7 @@ const App: React.FC = () => {
     // Update deployment record if we have one
     if (currentDeploymentId && status !== 'idle' && status !== 'deploying') {
       const deploymentStatus = status === 'success' ? 'success' : 'failed';
-      updateDeploymentStatus(currentDeploymentId, deploymentStatus);
+      updateBasicDeploymentStatus(currentDeploymentId, deploymentStatus);
       
       if (status !== 'deploying') {
         setCurrentDeploymentId(null);
@@ -191,7 +195,7 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `iac-generator-config-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `${user?.name || 'user'}-iac-config-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -286,6 +290,19 @@ const App: React.FC = () => {
             
             {/* Controls */}
             <div className="flex items-center space-x-4">
+              {/* User Info */}
+              {user && (
+                <div className="flex items-center space-x-3">
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                  </div>
+                  <div className="bg-blue-600 p-2 rounded-full">
+                    <User className="h-4 w-4 text-white" />
+                  </div>
+                </div>
+              )}
+
               {/* Auto-save Status */}
               <div className="flex items-center space-x-2 text-sm text-gray-500">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -302,6 +319,16 @@ const App: React.FC = () => {
                   <Settings className="h-4 w-4" />
                 </button>
               </div>
+
+              {/* Sign Out Button */}
+              <button
+                onClick={signOut}
+                className="flex items-center space-x-2 px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="text-sm">Sign Out</span>
+              </button>
 
               {/* Deployment Status */}
               <div className="flex items-center space-x-2">
@@ -355,7 +382,7 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="text-sm text-gray-600">
-                  Configuration is automatically saved to your browser
+                  Configuration is automatically saved for <strong>{user?.name}</strong>
                 </div>
               </div>
             </div>
@@ -524,12 +551,12 @@ const App: React.FC = () => {
 
           {/* History Tab */}
           {mainTab === 'history' && (
-            <LocalDeploymentHistory />
+            <BasicDeploymentHistory />
           )}
 
           {/* Configurations Tab */}
           {mainTab === 'configurations' && (
-            <SavedConfigurations
+            <BasicSavedConfigurations
               onLoadConfiguration={handleLoadConfiguration}
               currentInfraConfig={terraformConfig}
               currentAppConfig={k8sConfig}
@@ -539,6 +566,35 @@ const App: React.FC = () => {
       </main>
     </div>
   );
+};
+
+const App: React.FC = () => {
+  return (
+    <BasicAuthProvider>
+      <AuthWrapper />
+    </BasicAuthProvider>
+  );
+};
+
+const AuthWrapper: React.FC = () => {
+  const { user, loading } = useBasicAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <BasicAuth onAuthSuccess={() => {}} />;
+  }
+
+  return <AppContent />;
 };
 
 export default App;
