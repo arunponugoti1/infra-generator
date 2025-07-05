@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers, History, Save, LogOut, User } from 'lucide-react';
+import { Cloud, Github, Play, Settings, FileText, CheckCircle, AlertCircle, Download, Upload, RotateCcw, Layers, History, Save, LogOut, User, Monitor } from 'lucide-react';
 import { BasicAuthProvider, useBasicAuth } from './contexts/BasicAuthContext';
 import BasicAuth from './components/auth/BasicAuth';
 import ConfigurationForm from './components/ConfigurationForm';
@@ -13,6 +13,7 @@ import K8sGitHubIntegration from './components/K8sGitHubIntegration';
 import K8sWorkflowStatus from './components/K8sWorkflowStatus';
 import BasicDeploymentHistory from './components/history/BasicDeploymentHistory';
 import BasicSavedConfigurations from './components/configurations/BasicSavedConfigurations';
+import ResourceMonitoring from './components/ResourceMonitoring';
 import { 
   loadAppState, 
   saveTerraformConfig, 
@@ -64,7 +65,7 @@ interface ManifestConfig {
 type DeploymentMode = 'infrastructure' | 'application';
 type InfraTab = 'config' | 'terraform' | 'github' | 'deploy';
 type AppTab = 'k8s-config' | 'k8s-manifest' | 'k8s-github' | 'k8s-deploy';
-type MainTab = 'infrastructure' | 'application' | 'history' | 'configurations';
+type MainTab = 'infrastructure' | 'application' | 'history' | 'configurations' | 'resources';
 
 const AppContent: React.FC = () => {
   const { user, signOut, setUser } = useBasicAuth();
@@ -259,6 +260,7 @@ const AppContent: React.FC = () => {
   const mainTabs = [
     { id: 'infrastructure', label: 'Infrastructure', icon: Cloud },
     { id: 'application', label: 'Applications', icon: Layers },
+    { id: 'resources', label: 'Resources', icon: Monitor },
     { id: 'history', label: 'History', icon: History },
     { id: 'configurations', label: 'Saved Configs', icon: Save }
   ];
@@ -557,6 +559,16 @@ const AppContent: React.FC = () => {
                 />
               )}
             </>
+          )}
+
+          {/* Resources Tab */}
+          {mainTab === 'resources' && (
+            <div className="p-6">
+              <ResourceMonitoring
+                githubConfig={githubConfig}
+                terraformConfig={terraformConfig}
+              />
+            </div>
           )}
 
           {/* History Tab */}

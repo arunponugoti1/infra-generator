@@ -210,6 +210,7 @@ on:
           - plan
           - apply
           - destroy
+          - show-state
       project_id:
         description: 'GCP Project ID'
         required: true
@@ -372,6 +373,47 @@ jobs:
         terraform validate -no-color
         echo "✅ Configuration is valid"
 
+    # SHOW STATE OPERATION (for resource monitoring)
+    - name: Show Terraform State
+      id: show_state
+      if: github.event.inputs.terraform_action == 'show-state'
+      run: |
+        echo "📊 Retrieving current Terraform state..."
+        terraform show -json > terraform-state.json
+        echo "✅ State retrieved successfully"
+        echo ""
+        echo "📋 CURRENT INFRASTRUCTURE STATE:"
+        echo "================================"
+        
+        # Show resources summary
+        echo "🏗️ MANAGED RESOURCES:"
+        terraform state list || echo "No resources found in state"
+        echo ""
+        
+        # Show outputs if any
+        echo "📤 TERRAFORM OUTPUTS:"
+        terraform output -json || echo "No outputs defined"
+        echo ""
+        
+        # Show resource details
+        echo "📊 RESOURCE DETAILS:"
+        terraform show || echo "No resources to show"
+        echo ""
+        
+        # List GCP resources directly
+        echo "☁️ GCP RESOURCES IN PROJECT \${{ github.event.inputs.project_id }}:"
+        echo "GKE Clusters:"
+        gcloud container clusters list --project=\${{ github.event.inputs.project_id }} --format="table(name,location,status,currentMasterVersion,currentNodeVersion,numNodes)" || echo "No GKE clusters found"
+        echo ""
+        echo "Compute Instances:"
+        gcloud compute instances list --project=\${{ github.event.inputs.project_id }} --format="table(name,zone,machineType,status,internalIP,externalIP)" || echo "No compute instances found"
+        echo ""
+        echo "Networks:"
+        gcloud compute networks list --project=\${{ github.event.inputs.project_id }} --format="table(name,subnet_mode,bgp_routing_mode,firewall_rules.len():label=FIREWALL_RULES_COUNT)" || echo "No networks found"
+        echo ""
+        echo "Subnets:"
+        gcloud compute networks subnets list --project=\${{ github.event.inputs.project_id }} --format="table(name,region,network,range)" || echo "No subnets found"
+
     # PLAN OPERATION
     - name: Terraform Plan
       id: plan
@@ -472,6 +514,10 @@ jobs:
           echo "📋 SUCCESS: Plan has been generated!"
           echo "👀 Review the plan output above"
           echo "🚀 If everything looks good, run 'apply' to create the infrastructure"
+        elif [ "\${{ github.event.inputs.terraform_action }}" = "show-state" ] && [ "\${{ steps.show_state.outcome }}" = "success" ]; then
+          echo "📊 SUCCESS: Current infrastructure state has been retrieved!"
+          echo "👀 Review the state and resource details above"
+          echo "🔄 State is synced with remote backend: terraform-statefile-bucket-tf2"
         else
           echo "❌ Operation completed with issues - check the logs above"
         fi
