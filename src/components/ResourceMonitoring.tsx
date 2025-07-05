@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Cloud, Network, Database, Shield, Settings, ExternalLink, Eye, AlertCircle, CheckCircle, Clock, Server, HardDrive, Cpu, Globe } from 'lucide-react';
+import { RefreshCw, Cloud, Network, Database, Shield, Settings, ExternalLink, Eye, AlertCircle, CheckCircle, Clock, Server, HardDrive, Cpu, Globe, Play, FileText } from 'lucide-react';
 import { GitHubService } from '../utils/githubApi';
 
 interface TerraformResource {
@@ -42,13 +42,15 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [workflowRunning, setWorkflowRunning] = useState(false);
+  const [workflowUrl, setWorkflowUrl] = useState<string>('');
 
   const githubService = new GitHubService(githubConfig.token);
 
   useEffect(() => {
     if (autoRefresh) {
       const interval = setInterval(() => {
-        fetchTerraformState();
+        loadSimulatedState();
       }, 30000); // Refresh every 30 seconds
       setRefreshInterval(interval);
     } else {
@@ -65,23 +67,39 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
     };
   }, [autoRefresh]);
 
-  const fetchTerraformState = async () => {
+  const loadSimulatedState = () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      // Generate simulated state based on configuration
+      const simulatedState = generateSimulatedState();
+      setState(simulatedState);
+      setLastUpdated(new Date());
+    } catch (error) {
+      setError(`Failed to load state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const triggerPlanWorkflow = async () => {
     if (!githubConfig.token || !githubConfig.owner || !githubConfig.repo) {
       setError('GitHub configuration is incomplete');
       return;
     }
 
-    setLoading(true);
+    setWorkflowRunning(true);
     setError('');
 
     try {
-      // Trigger a workflow to get the current state
-      await githubService.triggerWorkflow(
+      // Trigger a plan workflow to check current infrastructure
+      const result = await githubService.triggerWorkflow(
         githubConfig.owner,
         githubConfig.repo,
         'deploy.yml',
         {
-          terraform_action: 'show-state',
+          terraform_action: 'plan',
           project_id: terraformConfig.projectId,
           cluster_name: terraformConfig.clusterName,
           region: terraformConfig.region,
@@ -91,35 +109,17 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
         }
       );
 
-      // Wait for the workflow to complete and fetch the state
-      setTimeout(async () => {
-        try {
-          const runs = await githubService.getWorkflowRuns(
-            githubConfig.owner,
-            githubConfig.repo,
-            'deploy.yml'
-          );
+      // Set the workflow URL for user to check
+      const workflowUrl = `https://github.com/${githubConfig.owner}/${githubConfig.repo}/actions`;
+      setWorkflowUrl(workflowUrl);
 
-          if (runs.length > 0) {
-            const latestRun = runs[0];
-            if (latestRun.status === 'completed' && latestRun.conclusion === 'success') {
-              // In a real implementation, you would parse the state from the workflow logs
-              // For now, we'll simulate the state based on typical GKE resources
-              const simulatedState = generateSimulatedState();
-              setState(simulatedState);
-              setLastUpdated(new Date());
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching workflow results:', error);
-          setError('Failed to fetch latest state from workflow');
-        }
-      }, 10000);
+      // Load simulated state immediately for demo purposes
+      loadSimulatedState();
 
     } catch (error) {
-      setError(`Failed to trigger state refresh: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setError(`Failed to trigger workflow: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setLoading(false);
+      setWorkflowRunning(false);
     }
   };
 
@@ -346,7 +346,7 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Infrastructure Resources</h2>
-          <p className="text-gray-600">Real-time view of your Terraform-managed GCP resources</p>
+          <p className="text-gray-600">View your Terraform-managed GCP resources</p>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -364,9 +364,9 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
             </label>
           </div>
           
-          {/* Manual refresh button */}
+          {/* Load state button */}
           <button
-            onClick={fetchTerraformState}
+            onClick={loadSimulatedState}
             disabled={loading}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
               loading
@@ -375,7 +375,21 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
             }`}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>{loading ? 'Refreshing...' : 'Refresh State'}</span>
+            <span>{loading ? 'Loading...' : 'Load State'}</span>
+          </button>
+
+          {/* Trigger plan workflow button */}
+          <button
+            onClick={triggerPlanWorkflow}
+            disabled={workflowRunning || !githubConfig.token}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
+              workflowRunning || !githubConfig.token
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            <Play className={`h-4 w-4 ${workflowRunning ? 'animate-spin' : ''}`} />
+            <span>{workflowRunning ? 'Running Plan...' : 'Run Plan'}</span>
           </button>
         </div>
       </div>
@@ -396,6 +410,18 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
                 Last updated: {lastUpdated.toLocaleTimeString()}
               </div>
             )}
+
+            {workflowUrl && (
+              <a
+                href={workflowUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-800"
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span>View Workflows</span>
+              </a>
+            )}
           </div>
           
           {state && (
@@ -414,6 +440,19 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
           <div className="flex items-center space-x-2">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <p className="text-red-700">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Workflow Status */}
+      {workflowRunning && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            <Play className="h-5 w-5 text-blue-600 animate-spin" />
+            <div>
+              <p className="text-blue-700 font-medium">Terraform Plan Workflow Running</p>
+              <p className="text-blue-600 text-sm">Check the GitHub Actions tab for real-time progress and detailed logs.</p>
+            </div>
           </div>
         </div>
       )}
@@ -530,26 +569,40 @@ const ResourceMonitoring: React.FC<ResourceMonitoringProps> = ({ githubConfig, t
           <Cloud className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Infrastructure State</h3>
           <p className="text-gray-600 mb-4">
-            Click "Refresh State" to load your current Terraform infrastructure resources.
+            Click "Load State" to view your infrastructure resources, or "Run Plan" to check your actual infrastructure.
           </p>
-          <button
-            onClick={fetchTerraformState}
-            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span>Load Infrastructure State</span>
-          </button>
+          <div className="flex justify-center space-x-4">
+            <button
+              onClick={loadSimulatedState}
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              <FileText className="h-4 w-4" />
+              <span>Load Demo State</span>
+            </button>
+            <button
+              onClick={triggerPlanWorkflow}
+              disabled={!githubConfig.token}
+              className={`inline-flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                githubConfig.token
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              <Play className="h-4 w-4" />
+              <span>Run Real Plan</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Info Panel */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-medium text-blue-900 mb-2">📊 Real-time Resource Monitoring</h4>
+        <h4 className="font-medium text-blue-900 mb-2">📊 Resource Monitoring</h4>
         <div className="text-sm text-blue-800 space-y-1">
-          <p>• <strong>Live Sync:</strong> Resources are fetched from your Terraform remote state</p>
-          <p>• <strong>Auto-refresh:</strong> Enable to automatically update every 30 seconds</p>
-          <p>• <strong>Complete View:</strong> Shows all resources including VPC, subnets, and dependencies</p>
-          <p>• <strong>GCP Integration:</strong> Direct links to Google Cloud Console for each resource</p>
+          <p>• <strong>Load State:</strong> Shows a demo view of your expected infrastructure resources</p>
+          <p>• <strong>Run Plan:</strong> Triggers a real Terraform plan workflow on GitHub Actions</p>
+          <p>• <strong>Auto-refresh:</strong> Automatically updates the demo state every 30 seconds</p>
+          <p>• <strong>GitHub Integration:</strong> View actual workflow runs and logs in your repository</p>
           <p>• <strong>State Backend:</strong> terraform-statefile-bucket-tf2/terraform/state/gke-cluster</p>
         </div>
       </div>
