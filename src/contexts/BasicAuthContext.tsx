@@ -12,6 +12,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => void;
   isAuthenticated: boolean;
+  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,6 +54,7 @@ export const BasicAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     loading,
     signOut,
     isAuthenticated: !!user,
+    setUser,
   };
 
   return (

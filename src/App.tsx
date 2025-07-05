@@ -67,7 +67,7 @@ type AppTab = 'k8s-config' | 'k8s-manifest' | 'k8s-github' | 'k8s-deploy';
 type MainTab = 'infrastructure' | 'application' | 'history' | 'configurations';
 
 const AppContent: React.FC = () => {
-  const { user, signOut } = useBasicAuth();
+  const { user, signOut, setUser } = useBasicAuth();
   
   // Load initial state from localStorage
   const initialState = loadAppState();
@@ -251,6 +251,11 @@ const AppContent: React.FC = () => {
     return date.toLocaleDateString();
   };
 
+  // Handle authentication success
+  const handleAuthSuccess = (authenticatedUser: any) => {
+    setUser(authenticatedUser);
+  };
+
   const mainTabs = [
     { id: 'infrastructure', label: 'Infrastructure', icon: Cloud },
     { id: 'application', label: 'Applications', icon: Layers },
@@ -271,6 +276,11 @@ const AppContent: React.FC = () => {
     { id: 'k8s-github', label: 'GitHub Setup', icon: Github },
     { id: 'k8s-deploy', label: 'Deploy Apps', icon: Layers }
   ];
+
+  // Show authentication screen if user is not logged in
+  if (!user) {
+    return <BasicAuth onAuthSuccess={handleAuthSuccess} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -591,7 +601,7 @@ const AuthWrapper: React.FC = () => {
   }
 
   if (!user) {
-    return <BasicAuth onAuthSuccess={() => {}} />;
+    return <AppContent />;
   }
 
   return <AppContent />;

@@ -91,9 +91,10 @@ const BasicAuth: React.FC<BasicAuthProps> = ({ onAuthSuccess }) => {
         storeSession(newUser);
         setSuccess('Account created successfully!');
         
+        // Immediately call onAuthSuccess after a brief delay to show success message
         setTimeout(() => {
           onAuthSuccess(newUser);
-        }, 1000);
+        }, 500);
 
       } else {
         // Sign In
@@ -117,13 +118,13 @@ const BasicAuth: React.FC<BasicAuthProps> = ({ onAuthSuccess }) => {
         storeSession(userWithoutPassword);
         setSuccess('Signed in successfully!');
         
+        // Immediately call onAuthSuccess after a brief delay to show success message
         setTimeout(() => {
           onAuthSuccess(userWithoutPassword);
-        }, 1000);
+        }, 500);
       }
     } catch (error) {
       setError('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
