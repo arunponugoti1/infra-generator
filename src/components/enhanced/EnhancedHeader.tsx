@@ -34,7 +34,7 @@ const EnhancedHeader: React.FC = () => {
             </div>
             
             <div className="hidden md:block">
-              <h1 className="text-2xl font-bold text-white">IaC Generator</h1>
+              <h1 className="text-2xl font-bold text-white">OneClick Infra</h1>
               <p className="text-sm text-white/80">Enterprise Infrastructure Platform</p>
             </div>
           </div>
