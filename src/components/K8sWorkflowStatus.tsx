@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Play, RefreshCw, ExternalLink, CheckCircle, XCircle, Clock, Eye, Trash2, AlertTriangle, Layers } from 'lucide-react';
 import { GitHubService } from '../utils/githubApi';
+import { useBasicAuth } from '../contexts/BasicAuthContext';
+import AuthModal from './auth/AuthModal';
 
 interface K8sConfig {
   projectId: string;
@@ -51,12 +53,14 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
   onBack,
   onDeploymentStart
 }) => {
+  const { user } = useBasicAuth();
   const [workflowUrl, setWorkflowUrl] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [currentWorkflowRun, setCurrentWorkflowRun] = useState<WorkflowRun | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [currentAction, setCurrentAction] = useState<K8sAction>('deploy');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const githubService = new GitHubService(githubConfig.token);
 
@@ -140,6 +144,12 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
   };
 
   const triggerWorkflow = async (action: K8sAction) => {
+    // Check if user is authenticated before allowing deployment operations
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (!githubConfig.token || !githubConfig.owner || !githubConfig.repo) {
       addLog('❌ GitHub configuration is incomplete');
       onStatusChange('error');
@@ -633,6 +643,13 @@ const K8sWorkflowStatus: React.FC<K8sWorkflowStatusProps> = ({
           </div>
         </div>
       )}
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode="signin"
+      />
 
       {/* Navigation */}
       <div className="mt-8 flex justify-between">

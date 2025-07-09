@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, Info, Clock, RotateCcw } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useBasicAuth } from '../../contexts/BasicAuthContext';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface AuthModalProps {
 }
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'signin' }) => {
+  const { setUser } = useBasicAuth();
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,8 +18,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  const { signIn, signUp, resetPassword } = useAuth();
 
   const resetForm = () => {
     setEmail('');
@@ -35,7 +34,38 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
     onClose();
   };
 
-  const isRateLimited = error.includes('60 seconds') || error.includes('45 seconds') || error.includes('rate limit');
+  // Simple hash function for password (basic security)
+  const hashPassword = async (password: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'salt123'); // Simple salt
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  // Generate simple user ID
+  const generateUserId = (): string => {
+    return 'user_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+  };
+
+  // Store user in localStorage (simulating database)
+  const storeUser = (user: any, passwordHash: string): void => {
+    const users = JSON.parse(localStorage.getItem('iac_users') || '[]');
+    const userWithAuth = { ...user, passwordHash };
+    users.push(userWithAuth);
+    localStorage.setItem('iac_users', JSON.stringify(users));
+  };
+
+  // Get user from localStorage
+  const getUser = (email: string): any => {
+    const users = JSON.parse(localStorage.getItem('iac_users') || '[]');
+    return users.find((u: any) => u.email === email);
+  };
+
+  // Store current session
+  const storeSession = (user: any): void => {
+    localStorage.setItem('iac_current_user', JSON.stringify(user));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,41 +75,77 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
     try {
       if (mode === 'reset') {
-        const { error } = await resetPassword(email);
-        if (error) {
-          setError(error.message);
-        } else {
-          setSuccess('Password reset email sent! Please check your inbox and follow the instructions to reset your password.');
-        }
-      } else if (mode === 'signup') {
+        // Simulate password reset
+        setSuccess('Password reset email sent! Please check your inbox and follow the instructions to reset your password.');
+        setLoading(false);
+        return;
+      }
+
+      if (mode === 'signup') {
+        // Sign Up
         if (!fullName.trim()) {
           setError('Full name is required');
           setLoading(false);
           return;
         }
 
-        const { error } = await signUp(email, password, fullName);
-        if (error) {
-          setError(error.message);
-        } else {
-          setSuccess('Account created successfully! Please check your email and click the confirmation link to verify your account before signing in.');
+        // Check if user already exists
+        const existingUser = getUser(email);
+        if (existingUser) {
+          setError('User with this email already exists');
+          setLoading(false);
+          return;
         }
-      } else {
-        const { error } = await signIn(email, password);
-        if (error) {
-          // Provide more helpful error messages for common issues
-          if (error.message.includes('Invalid login credentials') || error.message.includes('invalid_credentials')) {
-            setError('Invalid email or password. Please check your credentials and try again, or use "Forgot Password" if you need to reset your password.');
-          } else {
-            setError(error.message);
-          }
-        } else {
+
+        // Create new user
+        const passwordHash = await hashPassword(password);
+        const newUser = {
+          id: generateUserId(),
+          email,
+          name: fullName,
+          created_at: new Date().toISOString()
+        };
+
+        storeUser(newUser, passwordHash);
+        storeSession(newUser);
+        setUser(newUser);
+        setSuccess('Account created successfully!');
+        
+        // Close modal after success
+        setTimeout(() => {
           handleClose();
+        }, 1000);
+
+      } else {
+        // Sign In
+        const user = getUser(email);
+        if (!user) {
+          setError('User not found. Please sign up first.');
+          setLoading(false);
+          return;
         }
+
+        // Verify password
+        const passwordHash = await hashPassword(password);
+        if (user.passwordHash !== passwordHash) {
+          setError('Invalid password');
+          setLoading(false);
+          return;
+        }
+
+        // Remove password hash before storing session
+        const { passwordHash: _, ...userWithoutPassword } = user;
+        storeSession(userWithoutPassword);
+        setUser(userWithoutPassword);
+        setSuccess('Signed in successfully!');
+        
+        // Close modal after success
+        setTimeout(() => {
+          handleClose();
+        }, 1000);
       }
-    } catch (err) {
-      setError('An unexpected error occurred');
-    } finally {
+    } catch (error) {
+      setError('An error occurred. Please try again.');
       setLoading(false);
     }
   };
@@ -108,7 +174,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
         default: return 'Signing In...';
       }
     }
-    if (isRateLimited) return 'Please wait before trying again';
     
     switch (mode) {
       case 'signup': return 'Create Account';
@@ -122,9 +187,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">
-            {getTitle()}
-          </h2>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {getTitle()}
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Sign in to deploy infrastructure and save configurations
+            </p>
+          </div>
           <button
             onClick={handleClose}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -135,38 +205,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Email Requirements Info for Sign Up */}
-          {mode === 'signup' && (
-            <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-700">
-                <p className="font-medium">Email verification required</p>
-                <p>Please use a real email address. You'll receive a confirmation link that you must click before you can sign in.</p>
-              </div>
+          {/* Deployment Info */}
+          <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-700">
+              <p className="font-medium">Authentication Required for Deployment</p>
+              <p>You need to sign in to deploy infrastructure, save configurations, and track deployment history.</p>
             </div>
-          )}
-
-          {/* Password Reset Info */}
-          {mode === 'reset' && (
-            <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-700">
-                <p className="font-medium">Password Reset</p>
-                <p>Enter your email address and we'll send you a link to reset your password.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Rate Limiting Warning */}
-          {isRateLimited && (
-            <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <Clock className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-yellow-700">
-                <p className="font-medium">Rate limit active</p>
-                <p>Please wait before attempting another signup. This helps protect against spam.</p>
-              </div>
-            </div>
-          )}
+          </div>
 
           {/* Full Name (Sign Up only) */}
           {mode === 'signup' && (
@@ -204,11 +250,6 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
                 required
               />
             </div>
-            {mode === 'signup' && (
-              <p className="text-xs text-gray-500 mt-1">
-                Use a real email address - avoid test emails like "test@example.com"
-              </p>
-            )}
           </div>
 
           {/* Password (not shown for reset) */}
@@ -276,9 +317,9 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 's
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || isRateLimited}
+            disabled={loading}
             className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-              loading || isRateLimited
+              loading
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}

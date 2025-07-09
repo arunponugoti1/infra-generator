@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Play, RefreshCw, ExternalLink, CheckCircle, XCircle, Clock, Eye, Trash2, AlertTriangle } from 'lucide-react';
 import { GitHubService } from '../utils/githubApi';
+import { useBasicAuth } from '../contexts/BasicAuthContext';
+import AuthModal from './auth/AuthModal';
 
 interface TerraformConfig {
   projectId: string;
@@ -48,12 +50,14 @@ const WorkflowStatus: React.FC<WorkflowStatusProps> = ({
   onBack,
   onDeploymentStart
 }) => {
+  const { user } = useBasicAuth();
   const [workflowUrl, setWorkflowUrl] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [currentWorkflowRun, setCurrentWorkflowRun] = useState<WorkflowRun | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [currentAction, setCurrentAction] = useState<TerraformAction>('plan');
   const [showDestroyConfirm, setShowDestroyConfirm] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const githubService = new GitHubService(githubConfig.token);
 
@@ -135,6 +139,12 @@ const WorkflowStatus: React.FC<WorkflowStatusProps> = ({
   };
 
   const triggerWorkflow = async (action: TerraformAction) => {
+    // Check if user is authenticated before allowing deployment operations
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (!githubConfig.token || !githubConfig.owner || !githubConfig.repo) {
       addLog('❌ GitHub configuration is incomplete');
       onStatusChange('error');
@@ -594,6 +604,13 @@ const WorkflowStatus: React.FC<WorkflowStatusProps> = ({
           </div>
         </div>
       )}
+
+      {/* Authentication Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode="signin"
+      />
 
       {/* Navigation */}
       <div className="mt-8 flex justify-between">
