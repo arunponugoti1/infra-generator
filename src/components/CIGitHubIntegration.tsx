@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, ArrowRight, Github, Upload, CheckCircle, AlertCircle, Info, Docker, Package } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Github, Upload, CheckCircle, AlertCircle, Info, Pocket as Docker, Package } from 'lucide-react';
 import { GitHubService } from '../utils/githubApi';
 import { generateCIFiles } from '../utils/ciGenerator';
 
