@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ArrowRight, Info, Save, Docker, GitBranch, Package, Shield, Play } from 'lucide-react';
+import { ArrowRight, Info, Save, Pocket as Docker, GitBranch, Package, Shield, Play } from 'lucide-react';
 
 interface DockerConfig {
   enabled: boolean;
