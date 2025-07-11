@@ -17,6 +17,9 @@ import K8sConfigurationForm from '../K8sConfigurationForm';
 import K8sManifestPreview from '../K8sManifestPreview';
 import K8sGitHubIntegration from '../K8sGitHubIntegration';
 import K8sWorkflowStatus from '../K8sWorkflowStatus';
+import CIPipelineForm from '../CIPipelineForm';
+import CIPipelinePreview from '../CIPipelinePreview';
+import CIGitHubIntegration from '../CIGitHubIntegration';
 import BasicDeploymentHistory from '../history/BasicDeploymentHistory';
 import BasicSavedConfigurations from '../configurations/BasicSavedConfigurations';
 import ResourceMonitoring from '../ResourceMonitoring';
@@ -75,10 +78,55 @@ interface ManifestConfig {
   config: Record<string, any>;
 }
 
+interface DockerConfig {
+  enabled: boolean;
+  dockerfile: string;
+  context: string;
+  buildArgs: Record<string, string>;
+  target?: string;
+  platforms: string[];
+}
+
+interface RegistryConfig {
+  type: 'gcr' | 'dockerhub' | 'ghcr' | 'ecr';
+  registry: string;
+  repository: string;
+  username?: string;
+  enabled: boolean;
+}
+
+interface CIConfig {
+  projectName: string;
+  gitRepo: string;
+  branch: string;
+  buildTriggers: {
+    onPush: boolean;
+    onPR: boolean;
+    onTag: boolean;
+    manual: boolean;
+  };
+  docker: {
+    frontend: DockerConfig;
+    backend: DockerConfig;
+  };
+  registries: RegistryConfig[];
+  scanning: {
+    enabled: boolean;
+    failOnHigh: boolean;
+    failOnCritical: boolean;
+  };
+  notifications: {
+    slack?: string;
+    email?: string;
+    discord?: string;
+  };
+}
+
 type DeploymentMode = 'infrastructure' | 'application';
 type InfraTab = 'config' | 'terraform' | 'github' | 'deploy';
 type AppTab = 'k8s-config' | 'k8s-manifest' | 'k8s-github' | 'k8s-deploy';
-type MainTab = 'dashboard' | 'infrastructure' | 'application' | 'resources' | 'history' | 'configurations' | 'plugins' | 'enhanced-monitoring' | 'security' | 'cost-optimizer';
+type CITab = 'ci-config' | 'ci-preview' | 'ci-github';
+type MainTab = 'dashboard' | 'infrastructure' | 'application' | 'ci-pipeline' | 'resources' | 'history' | 'configurations' | 'plugins' | 'enhanced-monitoring' | 'security' | 'cost-optimizer';
 
 const EnhancedMainApp: React.FC = () => {
   const { user, signOut } = useBasicAuth();
@@ -94,6 +142,8 @@ const EnhancedMainApp: React.FC = () => {
   const [githubConfig, setGithubConfig] = useState<GitHubConfig>(initialState.githubConfig);
   const [k8sConfig, setK8sConfig] = useState<K8sConfig>(initialState.k8sConfig);
   const [k8sGithubConfig, setK8sGithubConfig] = useState<GitHubConfig>(initialState.k8sGithubConfig);
+  const [ciConfig, setCiConfig] = useState<CIConfig>(getDefaultCIConfig());
+  const [activeCITab, setActiveCITab] = useState<CITab>('ci-config');
   const [deploymentStatus, setDeploymentStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
   const [currentDeploymentId, setCurrentDeploymentId] = useState<string | null>(null);
   const [enabledPlugins, setEnabledPlugins] = useState<string[]>(['enhanced-monitoring', 'security-scanner', 'cost-optimizer']);
@@ -120,6 +170,13 @@ const EnhancedMainApp: React.FC = () => {
       icon: Layers, 
       description: 'K8s deployments and services',
       gradient: 'from-purple-500 to-pink-500'
+    },
+    { 
+      id: 'ci-pipeline', 
+      label: 'CI/CD Pipeline', 
+      icon: GitBranch, 
+      description: 'Docker builds and registry',
+      gradient: 'from-orange-500 to-red-500'
     },
     { 
       id: 'resources', 
@@ -186,6 +243,12 @@ const EnhancedMainApp: React.FC = () => {
     { id: 'k8s-deploy', label: 'Deploy Apps', icon: Layers, description: 'Application deployment' }
   ];
 
+  const ciTabs = [
+    { id: 'ci-config', label: 'CI Configuration', icon: Settings, description: 'Pipeline settings' },
+    { id: 'ci-preview', label: 'Pipeline Preview', icon: GitBranch, description: 'Generated workflows' },
+    { id: 'ci-github', label: 'GitHub Setup', icon: Settings, description: 'Repository integration' }
+  ];
+
   // Event handlers (keeping existing logic)
   const handleTerraformConfigChange = (config: TerraformConfig) => {
     setTerraformConfig(config);
@@ -204,6 +267,11 @@ const EnhancedMainApp: React.FC = () => {
 
   const handleK8sGithubConfigChange = (config: GitHubConfig) => {
     setK8sGithubConfig(config);
+  };
+
+  const handleCIConfigChange = (config: CIConfig) => {
+    setCiConfig(config);
+    // Could save to localStorage here if needed
   };
 
   const handleDeploymentStart = (type: 'infrastructure' | 'application', config: any, githubRepo?: string, workflowUrl?: string) => {
@@ -286,6 +354,50 @@ const EnhancedMainApp: React.FC = () => {
       category: 'analytics' as const
     }
   ];
+
+  function getDefaultCIConfig(): CIConfig {
+    return {
+      projectName: 'my-app',
+      gitRepo: '',
+      branch: 'main',
+      buildTriggers: {
+        onPush: true,
+        onPR: true,
+        onTag: true,
+        manual: true
+      },
+      docker: {
+        frontend: {
+          enabled: true,
+          dockerfile: 'frontend/Dockerfile',
+          context: './frontend',
+          buildArgs: {},
+          platforms: ['linux/amd64', 'linux/arm64']
+        },
+        backend: {
+          enabled: true,
+          dockerfile: 'backend/Dockerfile',
+          context: './backend',
+          buildArgs: {},
+          platforms: ['linux/amd64', 'linux/arm64']
+        }
+      },
+      registries: [
+        {
+          type: 'gcr',
+          registry: 'gcr.io',
+          repository: 'project-id/app-name',
+          enabled: true
+        }
+      ],
+      scanning: {
+        enabled: true,
+        failOnHigh: false,
+        failOnCritical: true
+      },
+      notifications: {}
+    };
+  }
 
   const renderMainContent = () => {
     switch (mainTab) {
@@ -434,6 +546,66 @@ const EnhancedMainApp: React.FC = () => {
           </div>
         );
 
+      case 'ci-pipeline':
+        return (
+          <div className="space-y-6">
+            {/* Sub Navigation for CI Pipeline */}
+            <div className="border-b border-white/20">
+              <nav className="-mb-px flex space-x-8">
+                {ciTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveCITab(tab.id as CITab)}
+                      className={`group flex items-center space-x-3 py-4 px-2 border-b-2 font-medium text-sm transition-all duration-300 ${
+                        activeCITab === tab.id
+                          ? 'border-orange-500 text-orange-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
+                      <div className="text-left">
+                        <div>{tab.label}</div>
+                        <div className="text-xs text-gray-400">{tab.description}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* CI Pipeline Content */}
+            <div className="min-h-[600px]">
+              {activeCITab === 'ci-config' && (
+                <CIPipelineForm
+                  config={ciConfig}
+                  onChange={handleCIConfigChange}
+                  onNext={() => setActiveCITab('ci-preview')}
+                />
+              )}
+              
+              {activeCITab === 'ci-preview' && (
+                <CIPipelinePreview
+                  config={ciConfig}
+                  onBack={() => setActiveCITab('ci-config')}
+                  onNext={() => setActiveCITab('ci-github')}
+                />
+              )}
+              
+              {activeCITab === 'ci-github' && (
+                <CIGitHubIntegration
+                  config={githubConfig}
+                  ciConfig={ciConfig}
+                  onChange={handleGithubConfigChange}
+                  onBack={() => setActiveCITab('ci-preview')}
+                  onNext={() => setMainTab('dashboard')}
+                />
+              )}
+            </div>
+          </div>
+        );
+
       case 'resources':
         return (
           <ResourceMonitoring
@@ -494,6 +666,7 @@ const EnhancedMainApp: React.FC = () => {
   const quickActions = [
     { icon: Cloud, label: 'New Infrastructure', onClick: () => setMainTab('infrastructure') },
     { icon: Layers, label: 'Deploy Application', onClick: () => setMainTab('application') },
+    { icon: GitBranch, label: 'Setup CI/CD', onClick: () => setMainTab('ci-pipeline') },
     { icon: Monitor, label: 'View Resources', onClick: () => setMainTab('resources') },
     { icon: Zap, label: 'Enhanced Monitoring', onClick: () => setMainTab('enhanced-monitoring') }
   ];
