@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ArrowRight, Copy, Download, Docker, GitBranch, Package, Shield } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Copy, Download, Pocket as Docker, GitBranch, Package, Shield } from 'lucide-react';
 
 interface DockerConfig {
   enabled: boolean;
